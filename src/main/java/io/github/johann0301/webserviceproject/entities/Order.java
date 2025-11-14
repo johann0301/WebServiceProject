@@ -1,10 +1,14 @@
 package io.github.johann0301.webserviceproject.entities;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 @Entity
 @Table(name= "tb_order")
@@ -14,10 +18,13 @@ public class Order implements Serializable {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "GMT")
     private Instant moment;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "client-id")
+    @JsonIgnore
     private User client;
 
     public Order(){}
@@ -26,6 +33,11 @@ public class Order implements Serializable {
         this.client = client;
         this.id = id;
         this.moment = moment;
+    }
+
+    @JsonProperty("clientId") // Isso garante que o nome no JSON seja "clientId"
+    public Long getClientId() {
+        return (client != null) ? client.getId() : null;
     }
 
     public User getClient() {

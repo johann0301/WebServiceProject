@@ -1,5 +1,6 @@
 package io.github.johann0301.webserviceproject.entities;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 import java.io.Serializable;
@@ -33,6 +34,7 @@ public class User implements Serializable {
         this.phone = phone;
         this.password = password;
     }
+
 
     public String getPhone() {
         return phone;

@@ -3,12 +3,12 @@ package io.github.johann0301.webserviceproject.entities;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.github.johann0301.webserviceproject.entities.enums.OrderStatus;
 import jakarta.persistence.*;
 
 import java.io.Serializable;
 import java.time.Instant;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 @Entity
 @Table(name= "tb_order")
@@ -22,17 +22,20 @@ public class Order implements Serializable {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "GMT")
     private Instant moment;
 
+    private Integer orderStatus;
+
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "client-id")
-    @JsonIgnore
     private User client;
 
     public Order(){}
 
-    public Order(User client, Long id, Instant moment) {
-        this.client = client;
+    public Order( Long id, Instant moment , OrderStatus orderStatus,User client) {
         this.id = id;
         this.moment = moment;
+        setOrderStatus(orderStatus);
+        this.client = client;
     }
 
     @JsonProperty("clientId") // Isso garante que o nome no JSON seja "clientId"
@@ -54,6 +57,17 @@ public class Order implements Serializable {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public OrderStatus getOrderStatus() {
+        return OrderStatus.valueOf(orderStatus);
+    }
+
+    public void setOrderStatus(OrderStatus orderStatus) {
+        if (!Objects.isNull(orderStatus)){
+            this.orderStatus = orderStatus.getCode();
+        }
+
     }
 
     public Instant getMoment() {

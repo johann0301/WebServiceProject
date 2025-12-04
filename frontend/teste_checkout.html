@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Teste Checkout</title>
+</head>
+
+<body>
+    <h1>Teste de Checkout</h1>
+    <button onclick="testarCheckout()">Testar POST /orders</button>
+    <div id="resultado"></div>
+
+    <script>
+        async function testarCheckout() {
+            const resultado = document.getElementById('resultado');
+            resultado.innerHTML = 'Testando...';
+
+            try {
+                const orderData = {
+                    clientId: 1,
+                    items: [
+                        { productId: 1, quantity: 2 },
+                        { productId: 2, quantity: 1 }
+                    ]
+                };
+
+                console.log('Enviando:', orderData);
+
+                const response = await fetch('http://localhost:8080/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(orderData)
+                });
+
+                console.log('Status:', response.status);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const createdOrder = await response.json();
+                console.log('Pedido criado:', createdOrder);
+
+                resultado.innerHTML = `
+                    <h2>✅ Sucesso!</h2>
+                    <p>Pedido #${createdOrder.id} criado!</p>
+                    <pre>${JSON.stringify(createdOrder, null, 2)}</pre>
+                `;
+            } catch (error) {
+                console.error('Erro:', error);
+                resultado.innerHTML = `
+                    <h2>❌ Erro!</h2>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+    </script>
+</body>
+
+</html>

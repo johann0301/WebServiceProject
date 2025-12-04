@@ -1,0 +1,885 @@
+// API Configuration
+const API_BASE_URL = 'http://localhost:8080';
+
+// Check authentication
+const userRole = localStorage.getItem('userRole');
+const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+
+if (!userRole) {
+    // Not logged in, redirect to login
+    window.location.href = 'login.html';
+}
+
+// State Management
+const state = {
+    users: [],
+    products: [],
+    orders: [],
+    cart: [],
+    currentPage: userRole === 'admin' ? 'dashboard' : 'products',
+    editingUser: null,
+    userRole: userRole,
+    currentUser: currentUser
+};
+
+// ===== API Functions =====
+const api = {
+    async get(endpoint) {
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            console.error(`Error fetching ${endpoint}:`, error);
+            updateApiStatus(false);
+            throw error;
+        }
+    },
+
+    async post(endpoint, data) {
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            console.error(`Error posting to ${endpoint}:`, error);
+            throw error;
+        }
+    },
+
+    async put(endpoint, data) {
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return await response.json();
+        } catch (error) {
+            console.error(`Error updating ${endpoint}:`, error);
+            throw error;
+        }
+    },
+
+    async delete(endpoint) {
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            return true;
+        } catch (error) {
+            console.error(`Error deleting ${endpoint}:`, error);
+            throw error;
+        }
+    }
+};
+
+// ===== Data Loading Functions =====
+async function loadUsers() {
+    try {
+        state.users = await api.get('/users');
+        updateApiStatus(true);
+        return state.users;
+    } catch (error) {
+        state.users = [];
+        return [];
+    }
+}
+
+async function loadProducts() {
+    try {
+        state.products = await api.get('/products');
+        updateApiStatus(true);
+        return state.products;
+    } catch (error) {
+        state.products = [];
+        return [];
+    }
+}
+
+async function loadOrders() {
+    try {
+        state.orders = await api.get('/orders');
+        updateApiStatus(true);
+        return state.orders;
+    } catch (error) {
+        state.orders = [];
+        return [];
+    }
+}
+
+// ===== API Status =====
+function updateApiStatus(isOnline) {
+    const indicator = document.getElementById('apiStatus');
+    const text = document.getElementById('apiStatusText');
+
+    if (isOnline) {
+        indicator.classList.add('online');
+        indicator.classList.remove('offline');
+        text.textContent = 'API Conectada';
+    } else {
+        indicator.classList.add('offline');
+        indicator.classList.remove('online');
+        text.textContent = 'API Offline';
+    }
+}
+
+// ===== Dashboard Functions =====
+async function renderDashboard() {
+    await Promise.all([loadUsers(), loadProducts(), loadOrders()]);
+
+    // Update stats
+    document.getElementById('totalUsers').textContent = state.users.length;
+    document.getElementById('totalProducts').textContent = state.products.length;
+    document.getElementById('totalOrders').textContent = state.orders.length;
+
+    // Calculate total revenue
+    const totalRevenue = state.orders.reduce((sum, order) => sum + (order.total || 0), 0);
+    document.getElementById('totalRevenue').textContent = formatCurrency(totalRevenue);
+
+    // Render recent users
+    renderRecentUsers();
+
+    // Render featured products
+    renderFeaturedProducts();
+}
+
+function renderRecentUsers() {
+    const container = document.getElementById('recentUsers');
+    const recentUsers = state.users.slice(-5).reverse();
+
+    if (recentUsers.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Nenhum usuário cadastrado</p></div>';
+        return;
+    }
+
+    container.innerHTML = recentUsers.map(user => `
+        <div class="list-item">
+            <div class="list-item-content">
+                <h4>${escapeHtml(user.name)}</h4>
+                <p>${escapeHtml(user.email)}</p>
+            </div>
+            <div class="list-item-badge">${escapeHtml(user.phone)}</div>
+        </div>
+    `).join('');
+}
+
+function renderFeaturedProducts() {
+    const container = document.getElementById('featuredProducts');
+    const featuredProducts = state.products.slice(0, 5);
+
+    if (featuredProducts.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Nenhum produto disponível</p></div>';
+        return;
+    }
+
+    container.innerHTML = featuredProducts.map(product => `
+        <div class="list-item">
+            <div class="list-item-content">
+                <h4>${escapeHtml(product.name)}</h4>
+                <p>${escapeHtml(product.description || 'Sem descrição')}</p>
+            </div>
+            <div class="list-item-badge">${formatCurrency(product.price)}</div>
+        </div>
+    `).join('');
+}
+
+// ===== Users Page Functions =====
+async function renderUsersPage() {
+    await loadUsers();
+    const container = document.getElementById('usersTable');
+
+    if (state.users.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <svg viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
+                </svg>
+                <h3>Nenhum usuário encontrado</h3>
+                <p>Clique em "Novo Usuário" para adicionar o primeiro usuário</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>Email</th>
+                    <th>Telefone</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${state.users.map(user => `
+                    <tr>
+                        <td>#${user.id}</td>
+                        <td>${escapeHtml(user.name)}</td>
+                        <td>${escapeHtml(user.email)}</td>
+                        <td>${escapeHtml(user.phone)}</td>
+                        <td>
+                            <button class="btn btn-secondary btn-sm" onclick="editUser(${user.id})">
+                                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
+                                </svg>
+                                Editar
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteUser(${user.id})">
+                                <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                </svg>
+                                Excluir
+                            </button>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+// ===== Products Page Functions =====
+async function renderProductsPage() {
+    await loadProducts();
+    const container = document.getElementById('productsGrid');
+
+    if (state.products.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <svg viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
+                </svg>
+                <h3>Nenhum produto encontrado</h3>
+                <p>Não há produtos cadastrados no sistema</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = state.products.map(product => `
+        <div class="product-card">
+            <img src="${escapeHtml(product.imgUrl || 'https://via.placeholder.com/400x300/667eea/ffffff?text=' + encodeURIComponent(product.name))}" 
+                 alt="${escapeHtml(product.name)}" 
+                 class="product-image"
+                 onerror="this.src='https://via.placeholder.com/400x300/667eea/ffffff?text=Produto'">
+            <div class="product-content">
+                <h3>${escapeHtml(product.name)}</h3>
+                <p>${escapeHtml(product.description || 'Produto de qualidade premium')}</p>
+                <div class="product-footer">
+                    <span class="product-price">${formatCurrency(product.price)}</span>
+                    <button class="btn btn-primary btn-sm" onclick="addToCart(${product.id})">
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 3H6.28l-.31-1.243A1 1 0 005 1H3zM16 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM6.5 18a1.5 1.5 0 100-3 1.5 1.5 0 000 3z"/>
+                        </svg>
+                        Comprar
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ===== Orders Page Functions =====
+async function renderOrdersPage() {
+    await loadOrders();
+    const container = document.getElementById('ordersTable');
+
+    console.log('All orders:', state.orders);
+    console.log('Current user:', state.currentUser);
+    console.log('User role:', state.userRole);
+
+    // Filter orders for customers (show only their orders)
+    let ordersToShow = state.orders;
+    if (state.userRole === 'customer' && state.currentUser) {
+        console.log('Filtering orders for customer ID:', state.currentUser.id);
+        ordersToShow = state.orders.filter(order => {
+            // Check different possible structures
+            const clientId = order.client?.id || order.clientId || order.client_id;
+            console.log('Order', order.id, 'client ID:', clientId);
+            return clientId === state.currentUser.id;
+        });
+        console.log('Filtered orders:', ordersToShow);
+    }
+
+    if (ordersToShow.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <svg viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+                    <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/>
+                </svg>
+                <h3>Nenhum pedido encontrado</h3>
+                <p>${state.userRole === 'customer' ? 'Você ainda não fez nenhum pedido' : 'Não há pedidos registrados no sistema'}</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    ${state.userRole === 'admin' ? '<th>Cliente</th>' : ''}
+                    <th>Data</th>
+                    <th>Status</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${ordersToShow.map(order => `
+                    <tr>
+                        <td>#${order.id}</td>
+                        ${state.userRole === 'admin' ? `<td>${order.client ? escapeHtml(order.client.name) : 'N/A'}</td>` : ''}
+                        <td>${formatDate(order.moment)}</td>
+                        <td><span class="badge ${getOrderStatusClass(order.orderStatus)}">${getOrderStatusText(order.orderStatus)}</span></td>
+                        <td>${formatCurrency(order.total || 0)}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+// ===== Shopping Cart Functions =====
+function addToCart(productId) {
+    const product = state.products.find(p => p.id === productId);
+    if (!product) return;
+
+    const existingItem = state.cart.find(item => item.product.id === productId);
+
+    if (existingItem) {
+        existingItem.quantity++;
+    } else {
+        state.cart.push({
+            product: product,
+            quantity: 1
+        });
+    }
+
+    updateCartCount();
+    showNotification(`${product.name} adicionado ao carrinho!`);
+}
+
+function removeFromCart(productId) {
+    state.cart = state.cart.filter(item => item.product.id !== productId);
+    updateCartCount();
+    renderCart();
+}
+
+function updateCartQuantity(productId, delta) {
+    const item = state.cart.find(item => item.product.id === productId);
+    if (!item) return;
+
+    item.quantity += delta;
+
+    if (item.quantity <= 0) {
+        removeFromCart(productId);
+    } else {
+        updateCartCount();
+        renderCart();
+    }
+}
+
+function updateCartCount() {
+    const count = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+    document.getElementById('cartCount').textContent = count;
+}
+
+function getCartTotal() {
+    return state.cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+}
+
+function renderCart() {
+    const container = document.getElementById('cartItems');
+    const totalSection = document.getElementById('cartTotalSection');
+    const totalElement = document.getElementById('cartTotal');
+
+    if (state.cart.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Seu carrinho está vazio</p></div>';
+        totalSection.style.display = 'none';
+        return;
+    }
+
+    container.innerHTML = state.cart.map(item => `
+        <div class="cart-item">
+            <img src="${escapeHtml(item.product.imgUrl || 'https://via.placeholder.com/60x60/667eea/ffffff?text=P')}" 
+                 alt="${escapeHtml(item.product.name)}" 
+                 class="cart-item-image"
+                 onerror="this.src='https://via.placeholder.com/60x60/667eea/ffffff?text=P'">
+            <div class="cart-item-info">
+                <h4>${escapeHtml(item.product.name)}</h4>
+                <p>${formatCurrency(item.product.price)} cada</p>
+            </div>
+            <div class="cart-item-quantity">
+                <button class="qty-btn" onclick="updateCartQuantity(${item.product.id}, -1)">−</button>
+                <span class="qty-display">${item.quantity}</span>
+                <button class="qty-btn" onclick="updateCartQuantity(${item.product.id}, 1)">+</button>
+            </div>
+            <button class="cart-item-remove" onclick="removeFromCart(${item.product.id})">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+            </button>
+        </div>
+    `).join('');
+
+    totalSection.style.display = 'block';
+    totalElement.textContent = formatCurrency(getCartTotal());
+}
+
+function openCart() {
+    renderCart();
+    document.getElementById('cartModal').classList.add('active');
+}
+
+function closeCart() {
+    document.getElementById('cartModal').classList.remove('active');
+}
+
+function clearCart() {
+    if (state.cart.length === 0) return;
+
+    if (confirm('Tem certeza que deseja limpar o carrinho?')) {
+        state.cart = [];
+        updateCartCount();
+        renderCart();
+    }
+}
+
+// ===== Checkout Functions =====
+async function openCheckout() {
+    if (state.cart.length === 0) {
+        alert('Seu carrinho está vazio!');
+        return;
+    }
+
+    // Determine user
+    let userId;
+    let userName;
+
+    if (state.userRole === 'admin') {
+        // For admin, ask which user via prompt
+        await loadUsers();
+
+        const userOptions = state.users.map(u => `${u.id}. ${u.name} (${u.email})`).join('\n');
+        const userInput = prompt(`Selecione o usuário para o pedido:\n\n${userOptions}\n\nDigite o ID do usuário:`);
+
+        if (!userInput) {
+            return; // Cancelled
+        }
+
+        userId = parseInt(userInput);
+        const user = state.users.find(u => u.id === userId);
+
+        if (!user) {
+            alert('Usuário não encontrado!');
+            return;
+        }
+
+        userName = user.name;
+    } else {
+        // Customer - use current user
+        userId = state.currentUser.id;
+        userName = state.currentUser.name;
+    }
+
+    // Calculate total
+    const total = getCartTotal();
+    const itemCount = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+
+    // Show confirmation
+    const confirmed = confirm(
+        `Confirmar pedido?\n\n` +
+        `Cliente: ${userName}\n` +
+        `Itens: ${itemCount}\n` +
+        `Total: ${formatCurrency(total)}`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        // Prepare order data
+        const orderData = {
+            clientId: userId,
+            items: state.cart.map(item => ({
+                productId: item.product.id,
+                quantity: item.quantity
+            }))
+        };
+
+        console.log('Creating order:', orderData);
+
+        // Create order via API
+        const createdOrder = await api.post('/orders', orderData);
+
+        console.log('Order created:', createdOrder);
+
+        // Success!
+        alert(`✅ Pedido #${createdOrder.id} criado com sucesso para ${userName}!`);
+        showNotification(`Pedido #${createdOrder.id} criado com sucesso!`);
+
+        // Clear cart and close modal
+        state.cart = [];
+        updateCartCount();
+        closeCart();
+
+        // Refresh orders page if currently viewing it
+        if (state.currentPage === 'orders') {
+            await renderOrdersPage();
+        }
+    } catch (error) {
+        console.error('Erro ao criar pedido:', error);
+        alert('❌ Erro ao processar pedido: ' + error.message);
+    }
+}
+
+function closeCheckout() {
+    document.getElementById('checkoutModal').classList.remove('active');
+}
+
+async function processCheckout(event) {
+    console.log('🚀 processCheckout called!', event);
+    event.preventDefault();
+
+    let userId;
+    let userName;
+
+    if (state.userRole === 'admin') {
+        userId = parseInt(document.getElementById('checkoutUser').value);
+        if (!userId) {
+            alert('Por favor, selecione um usuário!');
+            return;
+        }
+        const user = state.users.find(u => u.id === userId);
+        userName = user ? user.name : 'Usuário';
+    } else {
+        // Customer - use current user
+        userId = state.currentUser.id;
+        userName = state.currentUser.name;
+    }
+
+    // Calculate total
+    const total = getCartTotal();
+    const itemCount = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+
+    // Show confirmation
+    const confirmed = confirm(
+        `Confirmar pedido?\n\n` +
+        `Cliente: ${userName}\n` +
+        `Itens: ${itemCount}\n` +
+        `Total: ${formatCurrency(total)}`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        // Prepare order data
+        const orderData = {
+            clientId: userId,
+            items: state.cart.map(item => ({
+                productId: item.product.id,
+                quantity: item.quantity
+            }))
+        };
+
+        // Create order via API
+        const createdOrder = await api.post('/orders', orderData);
+
+        // Success!
+        showNotification(`Pedido #${createdOrder.id} criado com sucesso para ${userName}!`);
+
+        // Clear cart and close modal
+        state.cart = [];
+        updateCartCount();
+        closeCheckout();
+
+        // Refresh orders page if currently viewing it
+        if (state.currentPage === 'orders') {
+            await renderOrdersPage();
+        }
+    } catch (error) {
+        alert('Erro ao processar pedido: ' + error.message);
+    }
+}
+
+// ===== User CRUD Functions =====
+function openUserModal(user = null) {
+    const modal = document.getElementById('userModal');
+    const form = document.getElementById('userForm');
+    const title = document.getElementById('modalTitle');
+
+    if (user) {
+        title.textContent = 'Editar Usuário';
+        document.getElementById('userId').value = user.id;
+        document.getElementById('userName').value = user.name;
+        document.getElementById('userEmail').value = user.email;
+        document.getElementById('userPhone').value = user.phone;
+        document.getElementById('userPassword').value = user.password;
+        state.editingUser = user;
+    } else {
+        title.textContent = 'Novo Usuário';
+        form.reset();
+        document.getElementById('userId').value = '';
+        state.editingUser = null;
+    }
+
+    modal.classList.add('active');
+}
+
+function closeUserModal() {
+    const modal = document.getElementById('userModal');
+    modal.classList.remove('active');
+    state.editingUser = null;
+}
+
+async function saveUser(event) {
+    event.preventDefault();
+
+    const userData = {
+        name: document.getElementById('userName').value,
+        email: document.getElementById('userEmail').value,
+        phone: document.getElementById('userPhone').value,
+        password: document.getElementById('userPassword').value
+    };
+
+    try {
+        const userId = document.getElementById('userId').value;
+
+        if (userId) {
+            // Update existing user
+            await api.put(`/users/${userId}`, userData);
+        } else {
+            // Create new user
+            await api.post('/users', userData);
+        }
+
+        closeUserModal();
+        await renderUsersPage();
+        await renderDashboard();
+        showNotification('Usuário salvo com sucesso!');
+    } catch (error) {
+        alert('Erro ao salvar usuário: ' + error.message);
+    }
+}
+
+async function editUser(id) {
+    const user = state.users.find(u => u.id === id);
+    if (user) {
+        openUserModal(user);
+    }
+}
+
+async function deleteUser(id) {
+    if (!confirm('Tem certeza que deseja excluir este usuário?')) {
+        return;
+    }
+
+    try {
+        await api.delete(`/users/${id}`);
+        await renderUsersPage();
+        await renderDashboard();
+        showNotification('Usuário excluído com sucesso!');
+    } catch (error) {
+        alert('Erro ao excluir usuário: ' + error.message);
+    }
+}
+
+// ===== Navigation =====
+function navigateTo(page) {
+    // Update active nav item
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    const navItem = document.querySelector(`[data-page="${page}"]`);
+    if (navItem) {
+        navItem.classList.add('active');
+    }
+
+    // Update active page
+    document.querySelectorAll('.page').forEach(p => {
+        p.classList.remove('active');
+    });
+    document.getElementById(`${page}-page`).classList.add('active');
+
+    // Load page data
+    state.currentPage = page;
+    switch (page) {
+        case 'dashboard':
+            renderDashboard();
+            break;
+        case 'users':
+            renderUsersPage();
+            break;
+        case 'products':
+            renderProductsPage();
+            break;
+        case 'orders':
+            renderOrdersPage();
+            break;
+    }
+}
+
+// ===== Utility Functions =====
+function formatCurrency(value) {
+    return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+    }).format(value || 0);
+}
+
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(date);
+}
+
+function getOrderStatusClass(status) {
+    const statusMap = {
+        1: 'badge-warning',  // WAITING_PAYMENT
+        2: 'badge-info',     // PAID
+        3: 'badge-info',     // SHIPPED
+        4: 'badge-success',  // DELIVERED
+        5: 'badge-error'     // CANCELED
+    };
+    return statusMap[status] || 'badge-info';
+}
+
+function getOrderStatusText(status) {
+    const statusMap = {
+        1: 'Aguardando Pagamento',
+        2: 'Pago',
+        3: 'Enviado',
+        4: 'Entregue',
+        5: 'Cancelado'
+    };
+    return statusMap[status] || 'Desconhecido';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showNotification(message) {
+    // Simple notification - you could enhance this with a toast library
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// ===== Event Listeners =====
+document.addEventListener('DOMContentLoaded', () => {
+    // Navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const page = item.getAttribute('data-page');
+            navigateTo(page);
+        });
+    });
+
+    // User modal
+    const addUserBtn = document.getElementById('addUserBtn');
+    if (addUserBtn) {
+        addUserBtn.addEventListener('click', () => openUserModal());
+    }
+    document.getElementById('closeModal').addEventListener('click', closeUserModal);
+    document.getElementById('cancelBtn').addEventListener('click', closeUserModal);
+    document.getElementById('userForm').addEventListener('submit', saveUser);
+
+    // Cart modal
+    document.getElementById('viewCartBtn').addEventListener('click', openCart);
+    document.getElementById('closeCartModal').addEventListener('click', closeCart);
+    document.getElementById('clearCartBtn').addEventListener('click', clearCart);
+    document.getElementById('checkoutBtn').addEventListener('click', openCheckout);
+
+    // Checkout modal
+    const checkoutForm = document.getElementById('checkoutForm');
+    const closeCheckoutBtn = document.getElementById('closeCheckoutModal');
+    const cancelCheckoutBtn = document.getElementById('cancelCheckoutBtn');
+
+    console.log('Checkout form element:', checkoutForm);
+    console.log('Close checkout button:', closeCheckoutBtn);
+    console.log('Cancel checkout button:', cancelCheckoutBtn);
+
+    if (closeCheckoutBtn) {
+        closeCheckoutBtn.addEventListener('click', closeCheckout);
+    }
+    if (cancelCheckoutBtn) {
+        cancelCheckoutBtn.addEventListener('click', closeCheckout);
+    }
+    if (checkoutForm) {
+        checkoutForm.addEventListener('submit', processCheckout);
+        console.log('✅ Event listener added to checkout form');
+    } else {
+        console.error('❌ Checkout form not found!');
+    }
+
+    // Close modals on outside click
+    document.getElementById('userModal').addEventListener('click', (e) => {
+        if (e.target.id === 'userModal') closeUserModal();
+    });
+    document.getElementById('cartModal').addEventListener('click', (e) => {
+        if (e.target.id === 'cartModal') closeCart();
+    });
+    document.getElementById('checkoutModal').addEventListener('click', (e) => {
+        if (e.target.id === 'checkoutModal') closeCheckout();
+    });
+
+    // Set admin class on body for CSS styling
+    if (state.userRole === 'admin') {
+        document.body.classList.add('is-admin');
+    }
+
+    // Hide admin-only pages for customers
+    if (state.userRole !== 'admin') {
+        const dashboardPage = document.getElementById('dashboard-page');
+        const usersPage = document.getElementById('users-page');
+        if (dashboardPage) dashboardPage.style.display = 'none';
+        if (usersPage) usersPage.style.display = 'none';
+    }
+
+    // Initial load
+    if (state.userRole === 'admin') {
+        renderDashboard();
+    } else {
+        navigateTo('products');
+    }
+});

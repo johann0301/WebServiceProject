@@ -32,6 +32,14 @@ public class TestConfig implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+        
+        // Só popula o banco se estiver vazio
+        if (userRepository.count() > 0) {
+            System.out.println("ℹ️ Banco de dados já contém dados. Pulando população inicial.");
+            return;
+        }
+        
+        System.out.println("🔄 Populando banco de dados com dados de teste...");
 
         // ===== CATEGORIAS =====
         Category c1 = new Category(null, "Eletrônicos");
